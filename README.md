@@ -15,6 +15,8 @@ and always keep a fallback and a manual override.
 
 Made by JC.
 
+![DeskTV's home screen at dusk](docs/screenshots/home-dusk.png)
+
 ## What it does
 
 - **Home screen.** SundarTV's: the date, a large clock, the weather and prices over a live weather sky, round glass
