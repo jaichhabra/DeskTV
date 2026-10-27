@@ -1,0 +1,25 @@
+appId: io.desktv.app
+productName: DeskTV
+copyright: Copyright © 2026 JC
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**
+  - build/icon.png
+  - package.json
+asarUnpack: []
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: build/icon.png
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: DeskTV
+  artifactName: DeskTV-Setup-${version}.${ext}
+npmRebuild: false
