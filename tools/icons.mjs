@@ -7,7 +7,7 @@ const WANTED = [
   'netflix', 'primevideo', 'youtube', 'appletv', 'jiohotstar', 'hotstar', 'plex', 'spotify', 'youtubemusic',
   'vlcmediaplayer', 'steam', 'xbox', 'twitch', 'disneyplus', 'hbomax', 'crunchyroll', 'jellyfin', 'kodi',
   'soundcloud', 'applemusic', 'deezer', 'tidal', 'googlechrome', 'firefoxbrowser', 'microsoftedge', 'epicgames',
-  'mubi', 'zee5', 'sonyliv', 'jiocinema'
+  'mubi', 'zee5', 'sonyliv', 'jiocinema', 'bitcoin', 'ethereum', 'solana', 'xrp', 'dogecoin', 'youtubetv'
 ];
 
 const out = {};

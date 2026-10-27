@@ -68,17 +68,13 @@ export function useLayout(opts: Pick<Config['display'], 'scale' | 'safeArea'> & 
 
   useEffect(() => {
     const s = document.documentElement.style;
-    s.fontSize = `${layout.rem}px`;
+    s.setProperty('--k', `${layout.k}px`);
     s.setProperty('--inset-x', `${layout.insetX}px`);
     s.setProperty('--inset-y', `${layout.insetY}px`);
-    s.setProperty('--content-w', `${layout.contentWidth}px`);
-    s.setProperty('--tile-w', `${layout.tileWidth}px`);
-    s.setProperty('--tile-h', `${layout.tileHeight}px`);
-    s.setProperty('--tile-gap', `${layout.tileGap}px`);
-    s.setProperty('--hero-h', `${layout.heroHeight}px`);
     s.setProperty('--columns', String(layout.columns));
+    s.fontSize = `${16 * layout.k}px`;
     document.documentElement.dataset.shape = layout.shape;
-  }, [layout.rem, layout.insetX, layout.insetY, layout.contentWidth, layout.tileWidth, layout.tileHeight, layout.tileGap, layout.heroHeight, layout.columns, layout.shape]);
+  }, [layout.k, layout.insetX, layout.insetY, layout.columns, layout.shape]);
 
   return layout;
 }

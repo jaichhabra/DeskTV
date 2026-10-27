@@ -70,7 +70,7 @@ export interface Config {
     safeArea: number;
   };
   tv: { startWithWindows: boolean; startInTvMode: boolean };
-  appearance: { accent: string; motion: Motion; tileSize: TileSize };
+  appearance: { accent: string; motion: Motion; tileSize: TileSize; sounds: boolean };
   library: { folders: LibraryFolder[]; player: 'system' | 'vlc' };
   recent: RecentItem[];
 }
@@ -126,6 +126,13 @@ export interface LibraryState {
   error: string | null;
 }
 
+export interface HourForecast {
+  at: number;
+  temperature: number;
+  code: number;
+  isDay: boolean;
+}
+
 export interface WeatherNow {
   temperature: number;
   code: number;
@@ -134,6 +141,11 @@ export interface WeatherNow {
   low: number;
   city: string;
   at: number;
+  /** Today's sunrise and sunset (ms), for the dusk and night skies. */
+  sunrise: number | null;
+  sunset: number | null;
+  /** The next six hours. */
+  hourly: HourForecast[];
 }
 
 export interface CoinPrice {

@@ -3,7 +3,7 @@ import { freemem, totalmem, uptime } from 'node:os';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { sanitizeConfig, defaultConfig } from '../shared/config';
-import { checkExePath } from '../shared/launch';
+import { checkExePath, checkTarget } from '../shared/launch';
 import type { Channel } from '../shared/ipc';
 import type { Config, MediaKind } from '../shared/types';
 import { ConfigStore } from './store';
@@ -13,6 +13,7 @@ import { Library, photosIn } from './library';
 import { FeedService } from './feeds';
 import { displayState, place, watchDisplays } from './display';
 import { log } from './log';
+import { networkName } from './network';
 
 /** Brings DeskTV back from any app, as the remote's Home button would. */
 const HOME_SHORTCUT = 'CommandOrControl+Alt+Home';
@@ -265,6 +266,12 @@ function registerIpc(): void {
     return r.canceled ? null : (r.filePaths[0] ?? null);
   });
 
+  handle('open:uri', async (uri) => {
+    if (typeof uri !== 'string' || checkTarget({ kind: 'uri', uri }) !== null) return false;
+    await shell.openExternal(uri);
+    return true;
+  });
+  handle('network:name', () => networkName());
   handle('library:get', () => library.get());
   handle('library:rescan', () => void library.scan(store.get().library.folders));
   handle('library:add', async (path, kind) => {

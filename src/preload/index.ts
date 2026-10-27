@@ -28,6 +28,8 @@ const api: DeskApi = {
   pickExecutable: call('pick:exe'),
   pickImage: call('pick:image'),
   pickFolder: call('pick:folder'),
+  openUri: call('open:uri'),
+  networkName: call('network:name'),
   library: call('library:get'),
   rescanLibrary: call('library:rescan'),
   addLibraryFolder: call('library:add'),

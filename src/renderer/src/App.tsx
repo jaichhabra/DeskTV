@@ -1,18 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dir } from '../../shared/nav';
-import type { AppEntry, MediaItem } from '../../shared/types';
+import type { AppEntry, MediaItem, MediaKind } from '../../shared/types';
 import { desk, report } from './api';
-import { DeskContext, type Desk, type MenuItem, type Page } from './context';
-import { focusScope, focusItem } from './focus';
+import { DeskContext, popBack, type Desk, type MenuItem, type Page } from './context';
+import { focusItem, focusScope } from './focus';
 import { useDesk, useLayout } from './hooks';
 import { attachInput } from './input';
-import { Atmosphere } from './components/Atmosphere';
+import { setSounds } from './sounds';
 import { AppEditor, MenuOverlay, Toast } from './components/Overlays';
 import { Screensaver } from './components/Screensaver';
+import { Sky, useSkyState } from './components/Sky';
 import { Home } from './pages/Home';
-import { AppsPage } from './pages/AppsPage';
-import { LibraryPage } from './pages/LibraryPage';
-import { SearchPage } from './pages/SearchPage';
+import { AppsSheet } from './pages/AppsSheet';
+import { LibrarySheet } from './pages/LibrarySheet';
+import { SearchSheet } from './pages/SearchSheet';
 import { SettingsPage } from './pages/SettingsPage';
 
 type Layer = { kind: 'menu'; title: string; items: MenuItem[] } | { kind: 'editor'; app: AppEntry | null } | null;
@@ -26,20 +27,25 @@ export function App() {
 function Shell(props: Pick<Desk, 'config' | 'library' | 'feeds' | 'display' | 'save'>) {
   const { config, save } = props;
   const layout = useLayout({ scale: config.display.scale, safeArea: config.display.safeArea, tileSize: config.appearance.tileSize });
+  const sky = useSkyState(props.feeds);
   const [page, setPage] = useState<Page>('home');
+  const [libraryTab, setLibraryTab] = useState<MediaKind>('movies');
   const [layer, setLayer] = useState<Layer>(null);
   const [saver, setSaver] = useState(false);
   const [toastText, setToastText] = useState<string | null>(null);
   const [moving, setMoving] = useState<{ id: string; list: string[] } | null>(null);
+  const [version, setVersion] = useState('');
   const lastInput = useRef(Date.now());
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  // Accent and motion live on the root so every component follows them.
   useEffect(() => {
-    const root = document.documentElement;
-    root.style.setProperty('--accent', config.appearance.accent);
-    root.dataset.motion = config.appearance.motion;
-  }, [config.appearance.accent, config.appearance.motion]);
+    desk.systemInfo().then((i) => setVersion(i.version), report);
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.dataset.motion = config.appearance.motion;
+    setSounds(config.appearance.sounds);
+  }, [config.appearance.motion, config.appearance.sounds]);
 
   const toast = useCallback((text: string) => {
     setToastText(text);
@@ -47,7 +53,8 @@ function Shell(props: Pick<Desk, 'config' | 'library' | 'feeds' | 'display' | 's
     toastTimer.current = setTimeout(() => setToastText(null), 4000);
   }, []);
 
-  const go = useCallback((p: Page) => {
+  const go = useCallback((p: Page, tab?: MediaKind) => {
+    if (tab) setLibraryTab(tab);
     setPage(p);
     setMoving(null);
   }, []);
@@ -96,10 +103,14 @@ function Shell(props: Pick<Desk, 'config' | 'library' | 'feeds' | 'display' | 's
       const set = (fn: (a: AppEntry) => AppEntry): void =>
         void save((c) => ({ ...c, apps: c.apps.map((a) => (a.id === app.id ? fn(a) : a)) }));
       const items: MenuItem[] = [{ label: 'Open', run: () => openApp(app) }];
-      items.push(app.pinned ? { label: 'Remove from dock', run: () => set((a) => ({ ...a, pinned: false })) } : { label: 'Add to dock', run: () => set((a) => ({ ...a, pinned: true, hidden: false })) });
+      items.push(
+        app.pinned
+          ? { label: 'Remove from Shelf', run: () => set((a) => ({ ...a, pinned: false })) }
+          : { label: 'Add to Shelf', run: () => set((a) => ({ ...a, pinned: true, hidden: false })) }
+      );
       if (list.length > 1) items.push({ label: 'Move', run: () => setMoving({ id: app.id, list }) });
       items.push({ label: 'Edit…', run: () => setLayer({ kind: 'editor', app }) });
-      if (app.hidden) items.push({ label: 'Show on the home screen', run: () => set((a) => ({ ...a, hidden: false })) });
+      if (app.hidden) items.push({ label: 'Show', run: () => set((a) => ({ ...a, hidden: false })) });
       else if (app.builtin) items.push({ label: 'Hide', run: () => set((a) => ({ ...a, hidden: true, pinned: false })) });
       if (!app.builtin)
         items.push({
@@ -117,10 +128,10 @@ function Shell(props: Pick<Desk, 'config' | 'library' | 'feeds' | 'display' | 's
       kind: 'menu',
       title: 'DeskTV',
       items: [
-        { label: 'Show the desktop', run: () => void desk.minimize() },
+        { label: 'Show the Desktop', run: () => void desk.minimize() },
         props.display?.fullscreen
-          ? { label: 'Leave TV mode', run: () => void desk.setTvMode(false) }
-          : { label: 'Enter TV mode', run: () => void desk.setTvMode(true) },
+          ? { label: 'Leave TV Mode', run: () => void desk.setTvMode(false) }
+          : { label: 'Enter TV Mode', run: () => void desk.setTvMode(true) },
         { label: 'Screensaver', run: () => setSaver(true) },
         { label: 'Quit DeskTV', danger: true, run: () => void desk.quit() },
         { label: 'Cancel', run: () => undefined }
@@ -131,11 +142,16 @@ function Shell(props: Pick<Desk, 'config' | 'library' | 'feeds' | 'display' | 's
   const back = useCallback(() => {
     if (moving) setMoving(null);
     else if (layer) setLayer(null);
+    else if (popBack()) return;
     else if (page !== 'home') go('home');
-    else power();
+    else if (document.querySelector('.home.drawer-open')) {
+      // Back from the drawer returns to the shelf, as SundarTV's.
+      const tile = document.querySelector<HTMLElement>('.shelf [data-item]');
+      if (tile) focusItem(tile);
+    } else power();
   }, [moving, layer, page, go, power]);
 
-  // Input: arrows, Enter, back, controller; and the idle timer for the screensaver.
+  // Input: arrows, OK, back, controller; and the idle timer for the screensaver.
   const state = useRef({ back, saver, moving, reorder, toggleTv: () => void desk.setTvMode(!props.display?.fullscreen) });
   state.current = { back, saver, moving, reorder, toggleTv: () => void desk.setTvMode(!props.display?.fullscreen) };
   useEffect(
@@ -187,8 +203,10 @@ function Shell(props: Pick<Desk, 'config' | 'library' | 'feeds' | 'display' | 's
       ...props,
       layout,
       page,
+      libraryTab,
+      version,
       go,
-      // Enter on a tile being moved puts it down instead of opening it.
+      // OK on a tile being moved puts it down instead of opening it.
       openApp: (app) => (moving ? setMoving(null) : openApp(app)),
       openMedia,
       menu: (title, items) => setLayer({ kind: 'menu', title, items }),
@@ -202,23 +220,23 @@ function Shell(props: Pick<Desk, 'config' | 'library' | 'feeds' | 'display' | 's
       },
       power
     }),
-    [props, layout, page, go, openApp, openMedia, appMenu, toast, moving, power]
+    [props, layout, page, libraryTab, version, go, openApp, openMedia, appMenu, toast, moving, power]
   );
 
   return (
     <DeskContext.Provider value={value}>
-      <div className={`shell${layer ? ' layered' : ''}`}>
-        <Atmosphere dim={page !== 'home'} />
+      <div className={`shell page-${page}${layer ? ' layered' : ''}`}>
+        <Sky sky={sky} moving={config.appearance.motion !== 'off' && !saver} />
         {page === 'home' && <Home />}
-        {page === 'apps' && <AppsPage />}
-        {page === 'library' && <LibraryPage />}
-        {page === 'search' && <SearchPage />}
+        {page === 'apps' && <AppsSheet />}
+        {page === 'library' && <LibrarySheet />}
+        {page === 'search' && <SearchSheet />}
         {page === 'settings' && <SettingsPage />}
-        {moving && <div className="move-hint glass">Use ← → to move, then Enter or Back</div>}
+        {moving && <div className="move-hint glass">← → to move, then OK</div>}
         {layer?.kind === 'menu' && <MenuOverlay title={layer.title} items={layer.items} close={() => setLayer(null)} />}
         {layer?.kind === 'editor' && <AppEditor app={layer.app} close={() => setLayer(null)} />}
         {toastText && <Toast text={toastText} />}
-        {saver && <Screensaver />}
+        {saver && <Screensaver sky={sky} />}
       </div>
     </DeskContext.Provider>
   );
