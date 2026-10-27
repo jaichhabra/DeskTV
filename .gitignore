@@ -3,7 +3,6 @@ bin/
 obj/
 out/
 dist/
-build/
 *.exe
 *.msi
 
