@@ -27,7 +27,7 @@ export class FeedService {
   ) {
     const raw = this.file.read() as Feeds | null;
     if (raw && typeof raw === 'object') {
-      this.state = { ...this.state, weather: raw.weather ?? null, coins: Array.isArray(raw.coins) ? raw.coins : [], coinsAt: raw.coinsAt ?? null };
+      this.state = { ...this.state, weather: raw.weather ? { ...raw.weather, sunrise: raw.weather.sunrise ?? null, sunset: raw.weather.sunset ?? null, hourly: raw.weather.hourly ?? [] } : null, coins: Array.isArray(raw.coins) ? raw.coins : [], coinsAt: raw.coinsAt ?? null };
     }
   }
 
@@ -95,11 +95,23 @@ export class FeedService {
       const unit = c.weather.fahrenheit ? '&temperature_unit=fahrenheit' : '';
       const data = (await json(
         `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
-          `&current=temperature_2m,weather_code,is_day&daily=temperature_2m_max,temperature_2m_min&forecast_days=1&timezone=auto${unit}`
+          `&current=temperature_2m,weather_code,is_day&hourly=temperature_2m,weather_code,is_day` +
+          `&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset&forecast_days=2&timeformat=unixtime&timezone=auto${unit}`
       )) as {
         current: { temperature_2m: number; weather_code: number; is_day: number };
-        daily: { temperature_2m_max: number[]; temperature_2m_min: number[] };
+        hourly: { time: number[]; temperature_2m: number[]; weather_code: number[]; is_day: number[] };
+        daily: { temperature_2m_max: number[]; temperature_2m_min: number[]; sunrise: number[]; sunset: number[] };
       };
+      const now = Date.now();
+      const hourly = data.hourly.time
+        .map((t, i) => ({
+          at: t * 1000,
+          temperature: Math.round(data.hourly.temperature_2m[i]),
+          code: data.hourly.weather_code[i],
+          isDay: data.hourly.is_day[i] === 1
+        }))
+        .filter((h) => h.at > now)
+        .slice(0, 6);
       this.state.weather = {
         temperature: Math.round(data.current.temperature_2m),
         code: data.current.weather_code,
@@ -107,7 +119,10 @@ export class FeedService {
         high: Math.round(data.daily.temperature_2m_max[0]),
         low: Math.round(data.daily.temperature_2m_min[0]),
         city,
-        at: Date.now()
+        at: now,
+        sunrise: data.daily.sunrise?.[0] ? data.daily.sunrise[0] * 1000 : null,
+        sunset: data.daily.sunset?.[0] ? data.daily.sunset[0] * 1000 : null,
+        hourly
       };
       this.state.weatherError = null;
     } catch (e) {

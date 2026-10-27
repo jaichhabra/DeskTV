@@ -14,7 +14,7 @@ import type {
 } from './types';
 import { checkTarget } from './launch';
 
-export const CONFIG_VERSION = 1;
+export const CONFIG_VERSION = 2;
 
 /**
  * The services DeskTV starts with. Each opens its installed Windows app when the Start menu has one by that name,
@@ -25,27 +25,27 @@ export const DEFAULT_APPS: AppEntry[] = [
     { kind: 'startApp', match: 'Netflix' },
     { kind: 'url', url: 'https://www.netflix.com/' }
   ]),
+  app('youtube', 'YouTube', 'youtube', '#FF0000', 'streaming', [{ kind: 'url', url: 'https://www.youtube.com/' }]),
   app('prime', 'Prime Video', 'primevideo', '#1F2E3E', 'streaming', [
     { kind: 'startApp', match: 'Prime Video' },
     { kind: 'url', url: 'https://www.primevideo.com/' }
   ]),
-  app('youtube', 'YouTube', 'youtube', '#FF0000', 'streaming', [{ kind: 'url', url: 'https://www.youtube.com/' }]),
-  app('appletv', 'Apple TV', 'appletv', '#1C1C1E', 'streaming', [
-    { kind: 'startApp', match: 'Apple TV' },
-    { kind: 'url', url: 'https://tv.apple.com/' }
+  app('spotify', 'Spotify', 'spotify', '#1DB954', 'music', [
+    { kind: 'startApp', match: 'Spotify' },
+    { kind: 'url', url: 'https://open.spotify.com/' }
   ]),
   app('hotstar', 'JioHotstar', 'jiohotstar', '#0F1F5C', 'streaming', [
     { kind: 'startApp', match: 'JioHotstar' },
     { kind: 'url', url: 'https://www.hotstar.com/' }
   ]),
+  app('appletv', 'Apple TV', 'appletv', '#1C1C1E', 'streaming', [
+    { kind: 'startApp', match: 'Apple TV' },
+    { kind: 'url', url: 'https://tv.apple.com/' }
+  ]),
   app('plex', 'Plex', 'plex', '#1F1F1F', 'streaming', [
     { kind: 'startApp', match: 'Plex HTPC' },
     { kind: 'startApp', match: 'Plex' },
     { kind: 'url', url: 'https://app.plex.tv/' }
-  ]),
-  app('spotify', 'Spotify', 'spotify', '#1DB954', 'music', [
-    { kind: 'startApp', match: 'Spotify' },
-    { kind: 'url', url: 'https://open.spotify.com/' }
   ]),
   app('ytmusic', 'YouTube Music', 'youtubemusic', '#FF0033', 'music', [
     { kind: 'url', url: 'https://music.youtube.com/' }
@@ -54,7 +54,7 @@ export const DEFAULT_APPS: AppEntry[] = [
   app('browser', 'Browser', null, '#3A3A3C', 'apps', [{ kind: 'url', url: 'https://www.google.com/' }]),
   app('steam', 'Steam', 'steam', '#1B2838', 'games', [{ kind: 'startApp', match: 'Steam' }]),
   app('xbox', 'Xbox', 'xbox', '#107C10', 'games', [{ kind: 'startApp', match: 'Xbox' }])
-].map((a, i) => ({ ...a, pinned: i < 8 }));
+].map((a, i) => ({ ...a, pinned: i < 5 }));
 
 function app(
   id: string,
@@ -86,13 +86,13 @@ export function defaultConfig(): Config {
     apps: DEFAULT_APPS.map((a) => ({ ...a, launch: a.launch.map((t) => ({ ...t })) })),
     rows: ROW_KINDS.map((kind) => ({ kind, visible: true })),
     hero: { mode: 'greeting', featuredAppId: null, image: null },
-    widgets: { clock: true, weather: true, network: false, crypto: false, system: false },
+    widgets: { clock: true, weather: true, network: true, crypto: true, system: false },
     weather: { city: '', lat: null, lon: null, fahrenheit: false },
-    crypto: { coins: ['BTC', 'ETH'] },
+    crypto: { coins: ['BTC', 'ETH', 'SOL'] },
     screensaver: { enabled: true, idleMinutes: 5, quotes: true, weather: true, photoFolder: null },
     display: { preferredDisplayId: null, scale: 'auto', safeArea: 0 },
     tv: { startWithWindows: false, startInTvMode: true },
-    appearance: { accent: '#0A84FF', motion: 'full', tileSize: 'medium' },
+    appearance: { accent: '#0A84FF', motion: 'full', tileSize: 'medium', sounds: true },
     library: { folders: [], player: 'system' },
     recent: []
   };
@@ -179,6 +179,14 @@ export function sanitizeConfig(input: unknown): Config {
   }
   // Built-in services added in a later version show up for people who already have settings.
   if (Array.isArray(r.apps)) for (const a of d.apps) if (!seen.has(a.id)) apps.push({ ...a, pinned: false });
+  // Version 2 took SundarTV's shelf: its five services pinned, in its order; added apps keep their place after them.
+  if (typeof r.version === 'number' && r.version < 2) {
+    const order = d.apps.map((a) => a.id);
+    const builtin = apps.filter((a) => a.builtin).sort((x, y) => order.indexOf(x.id) - order.indexOf(y.id));
+    const added = apps.filter((a) => !a.builtin);
+    apps.splice(0, apps.length, ...builtin.map((a) => ({ ...a, pinned: d.apps.find((x) => x.id === a.id)?.pinned ?? false })), ...added);
+    r.widgets = { ...obj(r.widgets), network: true };
+  }
 
   const rows: RowSetting[] = [];
   for (const v of Array.isArray(r.rows) ? r.rows : []) {
@@ -263,7 +271,8 @@ export function sanitizeConfig(input: unknown): Config {
     appearance: {
       accent: typeof look.accent === 'string' && HEX.test(look.accent) ? look.accent : d.appearance.accent,
       motion: oneOf(look.motion, MOTIONS, 'full'),
-      tileSize: oneOf(look.tileSize, TILE_SIZES, 'medium')
+      tileSize: oneOf(look.tileSize, TILE_SIZES, 'medium'),
+      sounds: bool(look.sounds, true)
     },
     library: { folders: folders.slice(0, 20), player: library.player === 'vlc' ? 'vlc' : 'system' },
     recent: recent.sort((a, b) => b.at - a.at).slice(0, 20)

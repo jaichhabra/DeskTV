@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { AppEntry, MediaItem } from '../../../shared/types';
 import { desk, report } from '../api';
 import { isAvailable, useDeskContext } from '../context';
-import { BrandMark, Glyph, brandIcon, type GlyphName } from './Icon';
+import { Banner } from './Banner';
+import { Glyph, type GlyphName } from './Icon';
 
 /** A picture the person chose for a tile, through the dtv: scheme. */
 function useChosenImage(path: string | null): string | null {
@@ -26,7 +27,7 @@ desk?.onIcons(() => {
   iconListeners.forEach((l) => l());
 });
 
-/** The app's own icon from Windows, for services without a bundled logo. */
+/** The app's own icon from Windows, for apps DeskTV has no art for. */
 function useWindowsIcon(appId: string, wanted: boolean): string | null {
   const [url, setUrl] = useState<string | null>(null);
   const [gen, setGen] = useState(iconGeneration);
@@ -45,41 +46,28 @@ function useWindowsIcon(appId: string, wanted: boolean): string | null {
   return wanted ? url : null;
 }
 
-function shade(hex: string, f: number): string {
-  const n = parseInt(hex.slice(1), 16);
-  const ch = (s: number): number => Math.round(Math.min(255, Math.max(0, ((n >> s) & 255) * f)));
-  return `rgb(${ch(16)}, ${ch(8)}, ${ch(0)})`;
-}
-
 export function AppTile({
   app,
   list,
-  dock = false,
+  variant = 'shelf',
   autoFocus = false
 }: {
   app: AppEntry;
   /** The ids of the row it's in, for moving it. */
   list: string[];
-  dock?: boolean;
+  variant?: 'shelf' | 'grid';
   autoFocus?: boolean;
 }) {
   const d = useDeskContext();
   const image = useChosenImage(app.image);
   const ready = isAvailable(d.config, app);
-  const b = brandIcon(app.icon);
-  const winIcon = useWindowsIcon(app.id, !app.image && !b);
-  const color = app.color || b?.hex || '#3a3a3c';
-  const style = {
-    '--tile-color': color,
-    '--tile-deep': shade(color, 0.45)
-  } as CSSProperties;
+  const winIcon = useWindowsIcon(app.id, !app.image && !app.builtin);
   return (
     <button
-      className={`tile app-tile${dock ? ' dock-tile' : ''}${d.moving === app.id ? ' moving' : ''}${ready ? '' : ' unavailable'}`}
+      className={`tile ${variant}-tile${d.moving === app.id ? ' moving' : ''}${ready && !app.hidden ? '' : ' unavailable'}`}
       data-item
       data-key={`app:${app.id}`}
       data-autofocus={autoFocus || undefined}
-      style={style}
       onClick={() => d.openApp(app)}
       onContextMenu={(e) => {
         e.preventDefault();
@@ -88,21 +76,14 @@ export function AppTile({
       aria-label={ready ? app.name : `${app.name}, not installed`}
     >
       <span className="tile-face">
-        {image ? (
-          <img className="tile-image" src={image} alt="" draggable={false} />
-        ) : winIcon ? (
-          <img className="tile-icon" src={winIcon} alt="" draggable={false} />
-        ) : (
-          <BrandMark slug={app.icon} name={app.name} size="2.6em" />
-        )}
-        <span className="tile-sheen" />
+        <Banner app={app} image={image} winIcon={winIcon} />
       </span>
-      <span className="tile-label">{ready ? app.name : `${app.name} · not installed`}</span>
+      {variant === 'grid' && <span className="tile-label">{ready ? app.name : `${app.name} · not installed`}</span>}
     </button>
   );
 }
 
-const KIND_GLYPH: Record<MediaItem['kind'], GlyphName> = { movies: 'play', shows: 'tv', music: 'music', photos: 'photo' };
+const KIND_GLYPH: Record<MediaItem['kind'], GlyphName> = { movies: 'movie', shows: 'tv', music: 'music', photos: 'photo' };
 
 export function MediaTile({ item }: { item: MediaItem }) {
   const d = useDeskContext();
@@ -132,18 +113,14 @@ export function MediaTile({ item }: { item: MediaItem }) {
 
   const meta =
     item.kind === 'shows' && item.season !== null
-      ? `S${String(item.season).padStart(2, '0')} · E${String(item.episode).padStart(2, '0')}`
+      ? `Season ${item.season} · Episode ${item.episode}`
       : item.year
         ? String(item.year)
-        : item.kind === 'music'
-          ? 'Music'
-          : item.kind === 'photos'
-            ? 'Photo'
-            : 'Movie';
+        : { movies: 'Movie', shows: 'Episode', music: 'Music', photos: 'Photo' }[item.kind];
   return (
     <button
       ref={ref}
-      className="tile media-tile"
+      className="tile grid-tile media-tile"
       data-item
       data-key={`media:${item.id}`}
       onClick={() => d.openMedia(item)}
@@ -151,15 +128,14 @@ export function MediaTile({ item }: { item: MediaItem }) {
     >
       <span className="tile-face">
         {thumb ? (
-          <img className="tile-image" src={thumb} alt="" draggable={false} />
+          <img className="banner-image" src={thumb} alt="" draggable={false} />
         ) : (
-          <span className="poster">
-            <Glyph name={KIND_GLYPH[item.kind]} size="2em" />
+          <span className="banner poster">
+            <Glyph name={KIND_GLYPH[item.kind]} size="34cqh" />
           </span>
         )}
-        <span className="tile-sheen" />
       </span>
-      <span className="tile-caption">
+      <span className="tile-label">
         <span className="tile-title">{item.show ?? item.title}</span>
         <span className="tile-meta">{meta}</span>
       </span>
@@ -167,14 +143,27 @@ export function MediaTile({ item }: { item: MediaItem }) {
   );
 }
 
-/** A plain tile with a glyph, for "Add app" and "Add folder". */
-export function ActionTile({ label, glyph, onClick, keyName }: { label: string; glyph: GlyphName; onClick(): void; keyName: string }) {
+/** A plain glass tile with a symbol, for "Add app", "Add folder" and the drawer's shortcuts. */
+export function ActionTile({
+  label,
+  glyph,
+  onClick,
+  keyName,
+  variant = 'grid'
+}: {
+  label: string;
+  glyph: GlyphName;
+  onClick(): void;
+  keyName: string;
+  variant?: 'grid' | 'drawer';
+}) {
   return (
-    <button className="tile action-tile" data-item data-key={keyName} onClick={onClick}>
-      <span className="tile-face">
-        <Glyph name={glyph} size="2.2em" />
+    <button className={`tile ${variant}-tile action-tile`} data-item data-key={keyName} onClick={onClick}>
+      <span className="tile-face glass-card">
+        <Glyph name={glyph} size={variant === 'drawer' ? '30cqh' : '28cqh'} />
+        {variant === 'drawer' && <span className="action-label">{label}</span>}
       </span>
-      <span className="tile-label">{label}</span>
+      {variant === 'grid' && <span className="tile-label">{label}</span>}
     </button>
   );
 }

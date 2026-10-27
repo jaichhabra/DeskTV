@@ -4,8 +4,12 @@ A cinematic, full-screen home screen for a Windows PC on a TV, monitor or projec
 like a smart TV: a calm, Apple TV-like home screen with your streaming apps, your own movies and music, the time and
 weather, and a quote screensaver, all driven by a remote, keyboard, mouse or controller.
 
-It grew out of [SundarTV](https://github.com/jaichhabra/sundartv), the ad-free Android TV home screen: the glass dock,
-the weather-tinted sky, the quotes, Open-Meteo weather and Binance prices come from there. The screen handling
+It looks and feels like [SundarTV](https://github.com/jaichhabra/sundartv), the ad-free Android TV home screen, on a
+Windows PC: the same weather sky (ported from SundarTV's `WeatherSky`: clear, cloudy, fog, rain on the glass, snow,
+storms, by day, at dusk and at night), the date, the large clock, the weather and prices on the left, round glass
+buttons at the top right, the glass shelf of apps that rises to open the drawer (library, shortcuts, the weather and
+prices cards), SundarTV's settings and its quote screensaver. Everything is laid out on SundarTV's 1920 × 1080 stage
+and scaled to the screen, as a TV would. The screen handling
 follows the HY300 projector work: measure the screen first, decide the layout after, settle changes before acting,
 and always keep a fallback and a manual override.
 
@@ -13,9 +17,9 @@ Made by JC.
 
 ## What it does
 
-- **Home screen.** A large clock and greeting (or a featured app, or the last one you opened), the apps you pinned in
-  a glass dock, and rows for Streaming, Music, My Apps, Games, Local Movies, TV Shows, Favorites and Recently
-  Opened. Empty rows hide themselves; each row can be turned off or moved.
+- **Home screen.** SundarTV's: the date, a large clock, the weather and prices over a live weather sky, round glass
+  buttons (network, search, library, all apps, settings, power), and the glass shelf of apps. Down from the shelf
+  opens the drawer: the library, shortcuts, an hourly weather card and a prices card. Soft navigation sounds.
 - **Opens the real apps.** Netflix, Prime Video, YouTube, Spotify, YouTube Music, Apple TV, JioHotstar, Plex, VLC,
   a browser, Steam and Xbox come set up. Each opens its installed Windows app when the Start menu has it, and
   otherwise its official website in your default browser. Add any website or program, rename apps, change their
@@ -43,6 +47,7 @@ Made by JC.
 | Search | `/` or Ctrl + F | |
 | TV mode on or off | F11 | |
 | Bring DeskTV back from any app | Ctrl + Alt + Home | |
+| Open the drawer | ↓ from the shelf | ↓ |
 
 The mouse works too: pointing focuses, clicking opens, right-click opens an app's menu.
 

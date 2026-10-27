@@ -1,7 +1,6 @@
 /*
- * DeskTV's design tokens. Sizes are in rem: the root font size comes from the screen-aware layout (shared/layout),
- * so the whole interface keeps its proportions from a 1080p projector to a 4K TV. Tile sizes and insets come in as
- * pixels from the same place.
+ * DeskTV's tokens, after SundarTV. Every size is written in SundarTV's design pixels (its 1920 × 1080 stage) times
+ * --k, the screen's pixels per design pixel from shared/layout: calc(34 * var(--k)) is SundarTV's 34.
  */
 @font-face {
   font-family: 'Inter';
@@ -11,83 +10,49 @@
 }
 
 :root {
-  /* Surfaces: near-black to graphite. */
-  --bg: #050506;
-  --surface-1: #0e0e10;
-  --surface-2: #17171a;
-  --surface-3: #222226;
-  --surface-raised: #2c2c31;
-  --hairline: rgba(255, 255, 255, 0.08);
+  --k: 1px;
+  --inset-x: 80px;
+  --inset-y: 0px;
+  --columns: 5;
 
-  /* Text. */
-  --text: rgba(245, 245, 247, 0.96);
-  --text-2: rgba(235, 235, 245, 0.62);
-  --text-3: rgba(235, 235, 245, 0.4);
+  /* SundarTV's colors. */
+  --white: #f5f5f7;
+  --ink: #1c1c1e;
+  --smoke: #111113;
+  --text: rgba(255, 255, 255, 1);
+  --text-2: rgba(255, 255, 255, 0.86);
+  --text-3: rgba(255, 255, 255, 0.62);
+  --text-4: rgba(255, 255, 255, 0.45);
+  --up: #30d158;
+  --down: #ff453a;
 
-  /* One accent, chosen in Settings. */
-  --accent: #0a84ff;
+  /* The glass takes the sky's color (set from the sky, as "r, g, b"). */
+  --glass-tint: 44, 77, 139;
 
-  /* Glass, only for the dock and floating controls. */
-  --glass: rgba(28, 28, 32, 0.52);
-  --glass-strong: rgba(36, 36, 41, 0.78);
-  --glass-rim: rgba(255, 255, 255, 0.1);
-  --glass-blur: 28px;
-
-  /* Type scale, readable across a living room. */
   --font: 'Inter', 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif;
-  --t-hero: 4.25rem;
-  --t-display: 3rem;
-  --t-section: 1.5rem;
-  --t-title: 1.15rem;
-  --t-body: 1rem;
-  --t-meta: 0.875rem;
-  --t-label: 0.75rem;
 
-  /* Shape. */
-  --r-tile: 0.9rem;
-  --r-panel: 1.4rem;
-  --r-pill: 999px;
-
-  /* Focus: grow, lift and a soft light, so it reads from the couch. */
-  --focus-scale: 1.08;
-  --focus-ring: 0 0 0 0.16rem rgba(255, 255, 255, 0.92);
-  --focus-shadow: 0 1.6rem 3rem -0.8rem rgba(0, 0, 0, 0.8);
-
-  /* Motion. */
-  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
-  --ease-spring: cubic-bezier(0.34, 1.32, 0.64, 1);
-  --d-fast: 160ms;
-  --d-med: 320ms;
-  --d-slow: 700ms;
-
-  /* From the layout. */
-  --inset-x: 64px;
-  --inset-y: 40px;
-  --content-w: 1792px;
-  --tile-w: 280px;
-  --tile-h: 158px;
-  --tile-gap: 24px;
-  --hero-h: 670px;
+  /* Motion: SundarTV's drawer curve and a gentle spring for focus. */
+  --ease: cubic-bezier(0.32, 0.72, 0.2, 1);
+  --spring: cubic-bezier(0.2, 0.9, 0.3, 1.18);
+  --d-focus: 240ms;
+  --d-move: 380ms;
+  --d-fade: 280ms;
 }
 
-/* Motion turned down in Settings or in Windows. */
 :root[data-motion='reduced'] {
-  --focus-scale: 1.04;
-  --d-med: 160ms;
-  --d-slow: 240ms;
-  --ease-spring: var(--ease-out);
+  --spring: var(--ease);
+  --d-move: 200ms;
 }
+
 :root[data-motion='off'] {
-  --focus-scale: 1.03;
-  --d-fast: 0ms;
-  --d-med: 0ms;
-  --d-slow: 0ms;
+  --d-focus: 0ms;
+  --d-move: 0ms;
+  --d-fade: 0ms;
 }
+
 @media (prefers-reduced-motion: reduce) {
-  :root:not([data-motion='full-forced']) {
-    --focus-scale: 1.04;
-    --d-med: 160ms;
-    --d-slow: 240ms;
-    --ease-spring: var(--ease-out);
+  :root {
+    --spring: var(--ease);
+    --d-move: 200ms;
   }
 }

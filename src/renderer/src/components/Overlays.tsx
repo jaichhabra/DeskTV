@@ -5,7 +5,6 @@ import type { AppEntry, Category, InstalledApp, LaunchTarget } from '../../../sh
 import { desk, report } from '../api';
 import { useDeskContext, type MenuItem } from '../context';
 import { focusScope } from '../focus';
-import { BrandMark } from './Icon';
 
 /** A layer above the page with its own focus scope; it takes focus when it opens. */
 export function Overlay({ scope, children, className = '' }: { scope: string; children: ReactNode; className?: string }) {
@@ -108,7 +107,7 @@ export function AppEditor({ app, close }: { app: AppEntry | null; close(): void 
       <div className="editor glass" role="dialog" aria-label={app ? `Edit ${app.name}` : 'Add an app'}>
         <div className="editor-head">
           <span className="editor-preview" style={{ background: color }}>
-            <BrandMark slug={app?.icon ?? null} name={name || '?'} size="2em" />
+            {(name.trim() || '?').charAt(0).toUpperCase()}
           </span>
           <h2>{app ? `Edit ${app.name}` : 'Add an app'}</h2>
         </div>

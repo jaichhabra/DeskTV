@@ -4,44 +4,41 @@ import { computeLayout, sanitizeViewport, Settler, FALLBACK_VIEWPORT } from '../
 const auto = { scale: 'auto' as const, safeArea: 0, tileSize: 'medium' as const };
 
 describe('layout', () => {
-  it('gives a 1080p TV 16px text and a sensible number of tiles', () => {
+  it("draws SundarTV's 1920 × 1080 stage one to one on a 1080p screen, five grid tiles across", () => {
     const l = computeLayout({ width: 1920, height: 1080, dpr: 1 }, auto);
-    expect(l.rem).toBe(16);
+    expect(l.k).toBe(1);
+    expect(l.insetX).toBe(80);
     expect(l.shape).toBe('wide');
-    expect(l.columns).toBeGreaterThanOrEqual(5);
-    expect(l.columns).toBeLessThanOrEqual(7);
-    expect(l.tileHeight / l.tileWidth).toBeCloseTo(9 / 16, 1);
+    expect(l.columns).toBe(5);
   });
 
-  it('grows text on a 4K TV at 100% scaling, but far less than 2×', () => {
-    const hd = computeLayout({ width: 1920, height: 1080, dpr: 1 }, auto);
-    const uhd = computeLayout({ width: 3840, height: 2160, dpr: 1 }, auto);
-    expect(uhd.rem).toBeGreaterThan(hd.rem * 1.4);
-    expect(uhd.rem).toBeLessThan(hd.rem * 2);
+  it('shows the same picture on a 4K TV at 100% scaling, twice as sharp', () => {
+    const l = computeLayout({ width: 3840, height: 2160, dpr: 1 }, auto);
+    expect(l.k).toBe(2);
+    expect(l.columns).toBe(5);
   });
 
   it('treats a 4K TV at 200% scaling like 1080p, since Windows already scaled it', () => {
-    expect(computeLayout({ width: 1920, height: 1080, dpr: 2 }, auto).rem).toBe(16);
+    expect(computeLayout({ width: 1920, height: 1080, dpr: 2 }, auto).k).toBe(1);
   });
 
-  it('keeps an ultrawide readable: content capped and centered', () => {
+  it('follows the height on an ultrawide, with more tiles across', () => {
     const l = computeLayout({ width: 3440, height: 1440, dpr: 1 }, auto);
     expect(l.shape).toBe('ultrawide');
-    expect(l.contentWidth).toBeLessThan(3440 - l.insetX * 2);
+    expect(l.k).toBeCloseTo(1.333, 2);
+    expect(l.columns).toBeGreaterThan(5);
   });
 
-  it('fits a 4:3 projector with no more columns than a wide screen', () => {
-    const wide = computeLayout({ width: 1920, height: 1080, dpr: 1 }, auto);
-    const square = computeLayout({ width: 1024, height: 768, dpr: 1 }, auto);
-    expect(square.shape).toBe('standard');
-    expect(square.columns).toBeLessThanOrEqual(wide.columns);
-    expect(square.tileWidth * square.columns).toBeLessThanOrEqual(1024);
+  it('follows the width on a 4:3 projector so nothing runs off the side', () => {
+    const l = computeLayout({ width: 1024, height: 768, dpr: 1 }, auto);
+    expect(l.shape).toBe('standard');
+    expect(l.k).toBeCloseTo(1024 / 1440, 3);
+    expect(1920 * l.k).toBeLessThanOrEqual(1366);
   });
 
   it('applies the manual size and the edge margin', () => {
-    const base = computeLayout({ width: 1920, height: 1080, dpr: 1 }, auto);
-    expect(computeLayout({ width: 1920, height: 1080, dpr: 1 }, { ...auto, scale: 1.5 }).rem).toBe(24);
-    expect(computeLayout({ width: 1920, height: 1080, dpr: 1 }, { ...auto, safeArea: 5 }).insetX).toBe(base.insetX + 96);
+    expect(computeLayout({ width: 1920, height: 1080, dpr: 1 }, { ...auto, scale: 1.5 }).k).toBe(1.5);
+    expect(computeLayout({ width: 1920, height: 1080, dpr: 1 }, { ...auto, safeArea: 5 }).insetX).toBe(80 + 96);
   });
 
   it('falls back to 1920 × 1080 when the measurement is nonsense', () => {

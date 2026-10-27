@@ -42,6 +42,15 @@ describe('settings', () => {
     expect(c.apps.find((a) => a.id === 'netflix')?.pinned).toBe(false);
   });
 
+  it("moves version 1 settings to SundarTV's shelf, keeping added apps", () => {
+    const old = { version: 1, apps: [...defaultConfig().apps].reverse().map((a) => ({ ...a, pinned: true })), weather: { city: 'Delhi' } };
+    old.apps.push({ ...old.apps[0], id: 'mine', name: 'Mine', builtin: false, launch: [{ kind: 'url', url: 'https://a.b' }] });
+    const c = sanitizeConfig(old);
+    expect(c.apps.filter((a) => a.pinned).map((a) => a.id)).toEqual(['netflix', 'youtube', 'prime', 'spotify', 'hotstar', 'mine']);
+    expect(c.apps.at(-1)?.id).toBe('mine');
+    expect(c.weather.city).toBe('Delhi');
+  });
+
   it('keeps row order and fills in missing rows', () => {
     const c = sanitizeConfig({ rows: [{ kind: 'games', visible: false }, { kind: 'games', visible: true }, { kind: 'nope' }] });
     expect(c.rows[0]).toEqual({ kind: 'games', visible: false });

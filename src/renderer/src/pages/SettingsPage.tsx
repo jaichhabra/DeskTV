@@ -1,272 +1,375 @@
-import { useState, type ReactNode } from 'react';
-import { ROW_TITLES } from '../../../shared/config';
-import type { Config, HeroMode, Motion, TileSize } from '../../../shared/types';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import type { Config, Motion } from '../../../shared/types';
 import { desk, report } from '../api';
-import { useDeskContext } from '../context';
-import { Cycler } from '../components/Overlays';
-import { TopBar } from './TopBar';
+import { pushBack, useDeskContext } from '../context';
+import { focusScope } from '../focus';
+import { Glyph } from '../components/Icon';
 
-const ACCENTS: { hex: string; name: string }[] = [
-  { hex: '#0A84FF', name: 'Blue' },
-  { hex: '#64D2FF', name: 'Sky' },
-  { hex: '#30D158', name: 'Green' },
-  { hex: '#FFD60A', name: 'Gold' },
-  { hex: '#FF9F0A', name: 'Amber' },
-  { hex: '#FF453A', name: 'Red' },
-  { hex: '#E5E5EA', name: 'Silver' }
-];
+type Screen = 'main' | 'home' | 'shelf' | 'saver' | 'library' | 'screen' | 'desktv';
+
+const TITLES: Record<Screen, string> = {
+  main: '',
+  home: 'Home Settings',
+  shelf: 'Shelf',
+  saver: 'Screensaver',
+  library: 'Library',
+  screen: 'Screen and TV Mode',
+  desktv: 'DeskTV'
+};
+
 const IDLE = [1, 2, 5, 10, 15, 30, 60];
 const SCALES: Config['display']['scale'][] = ['auto', 0.8, 0.9, 1, 1.1, 1.2, 1.35, 1.5];
 const SAFE = [0, 2.5, 5, 7.5, 10];
-const COIN_SETS = [['BTC', 'ETH'], ['BTC'], ['BTC', 'ETH', 'SOL'], ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE']];
+const COINS = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE'];
+const COIN_NAMES: Record<string, string> = { BTC: 'Bitcoin', ETH: 'Ethereum', SOL: 'Solana', XRP: 'XRP', DOGE: 'Dogecoin' };
 
 function step<T>(all: readonly T[], v: T, dir: 1 | -1): T {
   const i = all.findIndex((x) => JSON.stringify(x) === JSON.stringify(v));
   return all[(Math.max(0, i) + dir + all.length) % all.length];
 }
 
-function Row({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
+/** One line of the list: its name, its value on the right, › when it opens more. OK or ← → change it. */
+function Row({
+  label,
+  value,
+  open,
+  run,
+  change,
+  k,
+  danger,
+  hint
+}: {
+  label: string;
+  value?: ReactNode;
+  open?: boolean;
+  run?(): void;
+  change?(dir: 1 | -1): void;
+  k: string;
+  danger?: boolean;
+  hint?: string;
+}) {
   return (
-    <div className="setting" data-row>
-      <div className="setting-text">
-        <span className="setting-label">{label}</span>
-        {hint && <span className="setting-hint">{hint}</span>}
-      </div>
-      <div className="setting-control">{children}</div>
+    <div data-row>
+      <button
+        className={`set-row${danger ? ' danger' : ''}`}
+        data-item
+        data-key={k}
+        onClick={() => (run ? run() : change?.(1))}
+        onKeyDown={(e) => {
+          if (change && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+            e.preventDefault();
+            change(e.key === 'ArrowRight' ? 1 : -1);
+          }
+        }}
+      >
+        <span className="set-label">
+          {label}
+          {hint && <span className="set-hint">{hint}</span>}
+        </span>
+        {value !== undefined && <span className="set-value">{value}</span>}
+        {open && <Glyph name="chevron" size="calc(34 * var(--k))" />}
+      </button>
     </div>
   );
 }
 
-function Toggle({ on, set, k }: { on: boolean; set(v: boolean): void; k: string }) {
+function Heading({ children }: { children: ReactNode }) {
+  return <div className="set-heading">{children}</div>;
+}
+
+const onOff = (b: boolean): string => (b ? 'On' : 'Off');
+
+/** A row whose value is typed: OK opens the field, OK again saves it. */
+function TextRow({ label, value, placeholder, save, k }: { label: string; value: string; placeholder: string; save(v: string): void; k: string }) {
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(value);
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (editing) input.current?.focus();
+  }, [editing]);
+  if (!editing) return <Row k={k} label={label} value={value || placeholder} run={() => (setText(value), setEditing(true))} />;
   return (
-    <button className={`toggle${on ? ' on' : ''}`} data-item data-key={k} role="switch" aria-checked={on} onClick={() => set(!on)}>
-      <span className="toggle-knob" />
-      <span className="toggle-text">{on ? 'On' : 'Off'}</span>
-    </button>
+    <div data-row>
+      <label className="set-row editing">
+        <span className="set-label">{label}</span>
+        <input
+          ref={input}
+          data-item
+          data-key={k}
+          className="set-input"
+          value={text}
+          maxLength={80}
+          placeholder={placeholder}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              save(text.trim());
+              setEditing(false);
+            } else if (e.key === 'Escape') {
+              e.preventDefault();
+              e.stopPropagation();
+              setEditing(false);
+            }
+          }}
+          onBlur={() => setEditing(false)}
+        />
+      </label>
+    </div>
   );
 }
 
-function Action({ label, run, k, danger }: { label: string; run(): void; k: string; danger?: boolean }) {
-  return (
-    <button className={`pill${danger ? ' danger' : ''}`} data-item data-key={k} onClick={run}>
-      {label}
-    </button>
-  );
-}
-
-/** Every setting, reachable with arrows and Enter; left and right change a value in place. */
+/** SundarTV's settings: the brand on the left, the list in frosted glass on the right, over a slow gradient. */
 export function SettingsPage() {
   const d = useDeskContext();
   const c = d.config;
-  const set = (fn: (c: Config) => void): void =>
+  const [stack, setStack] = useState<Screen[]>(['main']);
+  const screen = stack[stack.length - 1];
+  const panel = useRef<HTMLDivElement>(null);
+  const set = (fn: (x: Config) => void): void =>
     void d.save((x) => {
       fn(x);
       return x;
     });
-  const [city, setCity] = useState(c.weather.city);
+  const open = (s: Screen) => () => setStack([...stack, s]);
+
+  // Back closes a sub-screen first.
+  useEffect(() => (stack.length > 1 ? pushBack(() => setStack((s) => s.slice(0, -1))) : undefined), [stack.length]);
+  useEffect(() => {
+    panel.current?.scrollTo({ top: 0 });
+    requestAnimationFrame(() => focusScope());
+  }, [screen]);
+
   const displays = d.display?.displays ?? [];
-  const screen = d.display?.current;
-  const L = d.layout;
+  const cur = d.display?.current;
 
-  return (
-    <div className="page settings" data-scope="settings" data-scroller>
-      <TopBar title="Settings" />
-      <div className="page-body settings-body">
-        <Section title="Home screen">
-          <Row label="Top of the screen" hint="What the big area above the dock shows.">
-            <Cycler k="hero" value={{ greeting: 'Greeting', featured: 'A featured app', recent: 'Last opened' }[c.hero.mode]} onStep={(s) => set((x) => void (x.hero.mode = step<HeroMode>(['greeting', 'featured', 'recent'], x.hero.mode, s)))} />
-          </Row>
-          {c.hero.mode !== 'recent' && (
-            <Row label="Featured app">
-              <Cycler
-                k="featured"
-                value={c.apps.find((a) => a.id === c.hero.featuredAppId)?.name ?? 'First in the dock'}
-                onStep={(s) => set((x) => void (x.hero.featuredAppId = step([null, ...x.apps.filter((a) => !a.hidden).map((a) => a.id)], x.hero.featuredAppId, s)))}
+  let rows: ReactNode;
+  switch (screen) {
+    case 'main':
+      rows = (
+        <>
+          <Row k="m:tv" label="TV Mode" value={onOff(!!d.display?.fullscreen)} change={() => void desk.setTvMode(!d.display?.fullscreen)} />
+          <Row k="m:saver" label="Screensaver" value="Preview" run={d.startSaver} />
+          <Row k="m:home" label="Home Settings" open run={open('home')} />
+          <Row k="m:shelf" label="Shelf" open run={open('shelf')} />
+          <Row k="m:sv" label="Screensaver Settings" open run={open('saver')} />
+          <Row k="m:lib" label="Library" open run={open('library')} />
+          <Row k="m:screen" label="Screen and TV Mode" open run={open('screen')} />
+          <Row k="m:desktv" label="DeskTV" open run={open('desktv')} />
+          <Heading>Leave DeskTV</Heading>
+          <Row k="m:min" label="Show the Desktop" hint="Ctrl + Alt + Home brings DeskTV back" run={() => void desk.minimize()} />
+          <Row k="m:quit" label="Quit" run={() => void desk.quit()} />
+        </>
+      );
+      break;
+    case 'home':
+      rows = (
+        <>
+          <Row k="h:temp" label="Temperature" value={c.weather.fahrenheit ? '°F' : '°C'} change={() => set((x) => void (x.weather.fahrenheit = !x.weather.fahrenheit))} />
+          <Row k="h:weather" label="Weather widget" value={onOff(c.widgets.weather)} change={() => set((x) => void (x.widgets.weather = !x.widgets.weather))} />
+          <TextRow
+            k="h:city"
+            label="City"
+            value={c.weather.city}
+            placeholder="Choose…"
+            save={(v) => {
+              set((x) => {
+                x.weather.city = v;
+                x.weather.lat = null;
+                x.weather.lon = null;
+              });
+              setTimeout(() => void desk.refreshFeeds().catch(report), 300);
+            }}
+          />
+          <Row k="h:clock" label="Clock" value={onOff(c.widgets.clock)} change={() => set((x) => void (x.widgets.clock = !x.widgets.clock))} />
+          <Row k="h:net" label="Network name" value={onOff(c.widgets.network)} change={() => set((x) => void (x.widgets.network = !x.widgets.network))} />
+          <Row k="h:prices" label="Prices widget" value={onOff(c.widgets.crypto)} change={() => set((x) => void (x.widgets.crypto = !x.widgets.crypto))} />
+          {c.widgets.crypto &&
+            COINS.map((coin) => (
+              <Row
+                key={coin}
+                k={`h:coin:${coin}`}
+                label={COIN_NAMES[coin]}
+                value={onOff(c.crypto.coins.includes(coin))}
+                change={() =>
+                  set((x) => {
+                    const on = x.crypto.coins.includes(coin);
+                    x.crypto.coins = on ? x.crypto.coins.filter((y) => y !== coin) : COINS.filter((y) => y === coin || x.crypto.coins.includes(y));
+                  })
+                }
               />
-            </Row>
-          )}
-          <Row label="Background picture" hint={c.hero.image ? c.hero.image.split(/[\\/]/).pop() : 'Light that follows the weather and the hour.'}>
-            <Action k="hero:image" label="Choose…" run={() => desk.pickImage().then((p) => p && set((x) => void (x.hero.image = p)), report)} />
-            {c.hero.image && <Action k="hero:noimage" label="Remove" run={() => set((x) => void (x.hero.image = null))} />}
-          </Row>
-          <Row label="Tile size">
-            <Cycler k="tiles" value={{ small: 'Small', medium: 'Medium', large: 'Large' }[c.appearance.tileSize]} onStep={(s) => set((x) => void (x.appearance.tileSize = step<TileSize>(['small', 'medium', 'large'], x.appearance.tileSize, s)))} />
-          </Row>
-          <Row label="Accent color">
-            <Cycler
-              k="accent"
-              value={
-                <>
-                  <span className="swatch" style={{ background: c.appearance.accent }} /> {ACCENTS.find((a) => a.hex.toLowerCase() === c.appearance.accent.toLowerCase())?.name ?? 'Custom'}
-                </>
-              }
-              onStep={(s) => set((x) => void (x.appearance.accent = step(ACCENTS.map((a) => a.hex), x.appearance.accent.toUpperCase(), s)))}
+            ))}
+          <Row k="h:sounds" label="Navigation sounds" value={onOff(c.appearance.sounds)} change={() => set((x) => void (x.appearance.sounds = !x.appearance.sounds))} />
+          <Row
+            k="h:motion"
+            label="Motion"
+            value={{ full: 'Full', reduced: 'Reduced', off: 'Off' }[c.appearance.motion]}
+            change={(s) => set((x) => void (x.appearance.motion = step<Motion>(['full', 'reduced', 'off'], x.appearance.motion, s)))}
+          />
+          <Row
+            k="h:bg"
+            label="Background"
+            value={c.hero.image ? 'Picture' : 'Weather sky'}
+            run={() =>
+              c.hero.image
+                ? set((x) => void (x.hero.image = null))
+                : desk.pickImage().then((p) => p && set((x) => void (x.hero.image = p)), report)
+            }
+          />
+        </>
+      );
+      break;
+    case 'shelf':
+      rows = (
+        <>
+          {c.apps.map((a) => (
+            <Row
+              key={a.id}
+              k={`s:${a.id}`}
+              label={a.name}
+              value={a.pinned ? <Glyph name="check" size="1.1em" /> : ''}
+              change={() => set((x) => void (x.apps = x.apps.map((y) => (y.id === a.id ? { ...y, pinned: !y.pinned, hidden: false } : y))))}
             />
-          </Row>
-          <Row label="Motion" hint="Reduced keeps focus and fades, without the travel.">
-            <Cycler k="motion" value={{ full: 'Full', reduced: 'Reduced', off: 'Off' }[c.appearance.motion]} onStep={(s) => set((x) => void (x.appearance.motion = step<Motion>(['full', 'reduced', 'off'], x.appearance.motion, s)))} />
-          </Row>
-          {c.rows.map((r, i) => (
-            <Row key={r.kind} label={`Row: ${ROW_TITLES[r.kind]}`} hint={i === 0 ? 'Rows with nothing in them stay hidden.' : undefined}>
-              <Toggle k={`row:${r.kind}`} on={r.visible} set={(v) => set((x) => void (x.rows[i].visible = v))} />
-              <Action k={`row:${r.kind}:up`} label="Move up" run={() => set((x) => {
-                if (i > 0) [x.rows[i - 1], x.rows[i]] = [x.rows[i], x.rows[i - 1]];
-              })} />
-            </Row>
           ))}
-        </Section>
-
-        <Section title="Widgets">
-          <Row label="Large clock">
-            <Toggle k="w:clock" on={c.widgets.clock} set={(v) => set((x) => void (x.widgets.clock = v))} />
-          </Row>
-          <Row label="Weather" hint="From Open-Meteo. No account needed.">
-            <Toggle k="w:weather" on={c.widgets.weather} set={(v) => set((x) => void (x.widgets.weather = v))} />
-          </Row>
-          <Row label="City" hint={c.weather.lat !== null ? `Found: ${c.weather.city}` : 'Type your city, then Save.'}>
-            <input className="text-input" data-item data-key="city" value={city} maxLength={80} onChange={(e) => setCity(e.target.value)} placeholder="Mumbai" />
-            <Action
-              k="city:save"
-              label="Save"
+          <Heading>More</Heading>
+          <Row k="s:add" label="Add an App" open run={() => d.editApp(null)} />
+          <Row k="s:all" label="All Apps" hint="Hold OK on an app there to move or edit it" open run={() => d.go('apps')} />
+        </>
+      );
+      break;
+    case 'saver':
+      rows = (
+        <>
+          <Row k="v:on" label="Screensaver" value={onOff(c.screensaver.enabled)} change={() => set((x) => void (x.screensaver.enabled = !x.screensaver.enabled))} />
+          <Row k="v:preview" label="Preview" run={d.startSaver} />
+          <Row k="v:idle" label="Starts after" value={`${c.screensaver.idleMinutes} min`} change={(s) => set((x) => void (x.screensaver.idleMinutes = step(IDLE, x.screensaver.idleMinutes, s)))} />
+          <Row k="v:quotes" label="Quotes" value={onOff(c.screensaver.quotes)} change={() => set((x) => void (x.screensaver.quotes = !x.screensaver.quotes))} />
+          <Row k="v:weather" label="Weather" value={onOff(c.screensaver.weather)} change={() => set((x) => void (x.screensaver.weather = !x.screensaver.weather))} />
+          <Row
+            k="v:photos"
+            label="Photos"
+            value={c.screensaver.photoFolder ? (c.screensaver.photoFolder.split(/[\\/]/).pop() ?? 'Folder') : 'Off'}
+            run={() =>
+              c.screensaver.photoFolder
+                ? set((x) => void (x.screensaver.photoFolder = null))
+                : desk.pickFolder().then((p) => p && set((x) => void (x.screensaver.photoFolder = p)), report)
+            }
+          />
+        </>
+      );
+      break;
+    case 'library':
+      rows = (
+        <>
+          {c.library.folders.map((f) => (
+            <Row
+              key={f.path}
+              k={`l:${f.path}`}
+              label={f.path.split(/[\\/]/).pop() || f.path}
+              hint={f.path}
+              value="Remove"
               run={() => {
-                set((x) => {
-                  x.weather.city = city.trim();
-                  x.weather.lat = null;
-                  x.weather.lon = null;
-                });
-                setTimeout(() => void desk.refreshFeeds().catch(report), 300);
+                set((x) => void (x.library.folders = x.library.folders.filter((y) => y.path !== f.path)));
+                setTimeout(() => void desk.rescanLibrary().catch(report), 300);
               }}
             />
-          </Row>
-          <Row label="Temperature">
-            <Cycler k="units" value={c.weather.fahrenheit ? 'Fahrenheit' : 'Celsius'} onStep={() => set((x) => void (x.weather.fahrenheit = !x.weather.fahrenheit))} />
-          </Row>
-          <Row label="Crypto prices" hint="From Binance's public prices, every 5 minutes, in USDT.">
-            <Toggle k="w:crypto" on={c.widgets.crypto} set={(v) => set((x) => void (x.widgets.crypto = v))} />
-            {c.widgets.crypto && <Cycler k="coins" value={c.crypto.coins.join(', ')} onStep={(s) => set((x) => void (x.crypto.coins = step(COIN_SETS, x.crypto.coins, s)))} />}
-          </Row>
-          <Row label="Network status">
-            <Toggle k="w:network" on={c.widgets.network} set={(v) => set((x) => void (x.widgets.network = v))} />
-          </Row>
-          <Row label="System information">
-            <Toggle k="w:system" on={c.widgets.system} set={(v) => set((x) => void (x.widgets.system = v))} />
-          </Row>
-        </Section>
-
-        <Section title="Screensaver">
-          <Row label="Screensaver">
-            <Toggle k="s:on" on={c.screensaver.enabled} set={(v) => set((x) => void (x.screensaver.enabled = v))} />
-            <Action k="s:preview" label="Preview" run={d.startSaver} />
-          </Row>
-          <Row label="Starts after">
-            <Cycler k="s:idle" value={`${c.screensaver.idleMinutes} min`} onStep={(s) => set((x) => void (x.screensaver.idleMinutes = step(IDLE, x.screensaver.idleMinutes, s)))} />
-          </Row>
-          <Row label="Quotes">
-            <Toggle k="s:quotes" on={c.screensaver.quotes} set={(v) => set((x) => void (x.screensaver.quotes = v))} />
-          </Row>
-          <Row label="Weather on the screensaver">
-            <Toggle k="s:weather" on={c.screensaver.weather} set={(v) => set((x) => void (x.screensaver.weather = v))} />
-          </Row>
-          <Row label="Photos" hint={c.screensaver.photoFolder ?? 'Slow light, or pictures from a folder you choose.'}>
-            <Action k="s:photos" label="Choose folder…" run={() => desk.pickFolder().then((p) => p && set((x) => void (x.screensaver.photoFolder = p)), report)} />
-            {c.screensaver.photoFolder && <Action k="s:nophotos" label="Remove" run={() => set((x) => void (x.screensaver.photoFolder = null))} />}
-          </Row>
-        </Section>
-
-        <Section title="Apps">
-          <Row label="All apps" hint="Open, pin, move, edit or hide any app.">
-            <Action k="apps:open" label="Manage apps" run={() => d.go('apps')} />
-            <Action k="apps:add" label="Add an app" run={() => d.editApp(null)} />
-          </Row>
-        </Section>
-
-        <Section title="Library">
-          {c.library.folders.map((f) => (
-            <Row key={f.path} label={f.path} hint={{ movies: 'Movies', shows: 'TV shows', music: 'Music', photos: 'Photos' }[f.kind]}>
-              <Action
-                k={`lib:rm:${f.path}`}
-                label="Remove"
-                run={() => {
-                  set((x) => void (x.library.folders = x.library.folders.filter((y) => y.path !== f.path)));
-                  setTimeout(() => void desk.rescanLibrary().catch(report), 300);
-                }}
-              />
-            </Row>
           ))}
-          <Row label="Folders" hint="DeskTV only reads the folders you add.">
-            <Action k="lib:manage" label="Open Library" run={() => d.go('library')} />
-          </Row>
-          <Row label="Play files with" hint="VLC when it's installed; otherwise Windows' default app.">
-            <Cycler k="player" value={c.library.player === 'vlc' ? 'VLC' : "Windows' default app"} onStep={() => set((x) => void (x.library.player = x.library.player === 'vlc' ? 'system' : 'vlc'))} />
-          </Row>
-        </Section>
-
-        <Section title="Screen and TV mode">
-          <Row label="TV mode" hint="Full screen, without the taskbar. F11 switches it too.">
-            <Toggle k="tv:now" on={!!d.display?.fullscreen} set={(v) => void desk.setTvMode(v).catch(report)} />
-          </Row>
-          <Row label="Open in TV mode">
-            <Toggle k="tv:start" on={c.tv.startInTvMode} set={(v) => set((x) => void (x.tv.startInTvMode = v))} />
-          </Row>
-          <Row label="Start with Windows" hint="Opens DeskTV when you sign in to Windows.">
-            <Toggle k="tv:login" on={c.tv.startWithWindows} set={(v) => set((x) => void (x.tv.startWithWindows = v))} />
-          </Row>
-          <Row label="Screen" hint="DeskTV moves to the main screen while this one is off.">
-            <Cycler
-              k="display"
-              value={c.display.preferredDisplayId === null ? 'Main screen' : (displays.find((x) => x.id === c.display.preferredDisplayId)?.label ?? 'Not connected')}
-              onStep={(s) => set((x) => void (x.display.preferredDisplayId = step([null, ...displays.map((y) => y.id)], x.display.preferredDisplayId, s)))}
-            />
-          </Row>
-          <Row label="Size" hint="Automatic follows the screen; change it if text looks too big or small from your seat.">
-            <Cycler k="scale" value={c.display.scale === 'auto' ? 'Automatic' : `${Math.round(c.display.scale * 100)}%`} onStep={(s) => set((x) => void (x.display.scale = step(SCALES, x.display.scale, s)))} />
-          </Row>
-          <Row label="Edge margin" hint="For TVs that cut off the edges of the picture.">
-            <Cycler k="safe" value={`${c.display.safeArea}%`} onStep={(s) => set((x) => void (x.display.safeArea = step(SAFE, x.display.safeArea, s)))} />
-          </Row>
-          {screen && (
-            <div className="setting info" data-row>
-              <div className="setting-text">
-                <span className="setting-label">{screen.label}</span>
-                <span className="setting-hint">
-                  {screen.physicalWidth} × {screen.physicalHeight} pixels · Windows scaling {Math.round(screen.scaleFactor * 100)}% · {screen.refreshRate} Hz
-                  {d.display?.fallback ? ' · measured size unavailable, using 1920 × 1080' : ''}
-                  <br />
-                  Layout: {L.shape}, {L.columns} tiles across, text {L.rem}px
+          <Row k="l:open" label="Add Folders" open run={() => d.go('library')} />
+          <Row k="l:player" label="Play files with" value={c.library.player === 'vlc' ? 'VLC' : 'Windows'} change={() => set((x) => void (x.library.player = x.library.player === 'vlc' ? 'system' : 'vlc'))} />
+          <Row k="l:rescan" label="Rescan" value={d.library.scanning ? 'Scanning…' : `${d.library.items.length} files`} run={() => void desk.rescanLibrary().catch(report)} />
+        </>
+      );
+      break;
+    case 'screen':
+      rows = (
+        <>
+          <Row k="d:tv" label="TV Mode" hint="Full screen. F11 switches it too." value={onOff(!!d.display?.fullscreen)} change={() => void desk.setTvMode(!d.display?.fullscreen)} />
+          <Row k="d:start" label="Open in TV Mode" value={onOff(c.tv.startInTvMode)} change={() => set((x) => void (x.tv.startInTvMode = !x.tv.startInTvMode))} />
+          <Row k="d:login" label="Start with Windows" value={onOff(c.tv.startWithWindows)} change={() => set((x) => void (x.tv.startWithWindows = !x.tv.startWithWindows))} />
+          <Row
+            k="d:display"
+            label="Screen"
+            value={c.display.preferredDisplayId === null ? 'Main screen' : (displays.find((x) => x.id === c.display.preferredDisplayId)?.label ?? 'Not connected')}
+            change={(s) => set((x) => void (x.display.preferredDisplayId = step([null, ...displays.map((y) => y.id)], x.display.preferredDisplayId, s)))}
+          />
+          <Row
+            k="d:scale"
+            label="Size"
+            value={c.display.scale === 'auto' ? 'Automatic' : `${Math.round(c.display.scale * 100)}%`}
+            change={(s) => set((x) => void (x.display.scale = step(SCALES, x.display.scale, s)))}
+          />
+          <Row k="d:safe" label="Edge margin" hint="For TVs that cut off the edges" value={`${c.display.safeArea}%`} change={(s) => set((x) => void (x.display.safeArea = step(SAFE, x.display.safeArea, s)))} />
+          {cur && (
+            <>
+              <Heading>This Screen</Heading>
+              <div className="set-info">
+                <span>{cur.label}</span>
+                <span>
+                  {cur.physicalWidth} × {cur.physicalHeight}
                 </span>
               </div>
-            </div>
+              <div className="set-info">
+                <span>Windows scaling</span>
+                <span>{Math.round(cur.scaleFactor * 100)}%</span>
+              </div>
+              <div className="set-info">
+                <span>Refresh rate</span>
+                <span>{cur.refreshRate} Hz</span>
+              </div>
+              <div className="set-info">
+                <span>Layout</span>
+                <span>
+                  {d.layout.shape} · {Math.round(d.layout.k * 100)}%{d.display?.fallback ? ' · estimated' : ''}
+                </span>
+              </div>
+            </>
           )}
-        </Section>
+        </>
+      );
+      break;
+    case 'desktv':
+      rows = (
+        <>
+          <Row k="x:export" label="Export Settings" run={() => desk.exportConfig().then((ok) => ok && d.toast('Settings exported'), report)} />
+          <Row k="x:import" label="Import Settings" run={() => desk.importConfig().then((cfg) => cfg && d.toast('Settings imported'), report)} />
+          <Row
+            k="x:reset"
+            label="Reset Settings"
+            danger
+            run={() =>
+              d.menu('Reset all settings?', [
+                { label: 'Reset', danger: true, run: () => void desk.resetConfig().then(() => d.toast('Settings reset'), report) },
+                { label: 'Cancel', run: () => undefined }
+              ])
+            }
+          />
+          <Heading>Notices</Heading>
+          <div className="set-note">Weather from Open-Meteo. Prices from Binance. The log is in %APPDATA%\DeskTV\logs.</div>
+        </>
+      );
+      break;
+  }
 
-        <Section title="DeskTV">
-          <Row label="Settings file" hint="Move your setup to another PC.">
-            <Action k="cfg:export" label="Export…" run={() => desk.exportConfig().then((ok) => ok && d.toast('Settings exported'), report)} />
-            <Action k="cfg:import" label="Import…" run={() => desk.importConfig().then((cfg) => cfg && d.toast('Settings imported'), report)} />
-          </Row>
-          <Row label="Start over" hint="Back to the original apps and settings.">
-            <Action
-              k="cfg:reset"
-              label="Reset…"
-              danger
-              run={() => d.menu('Reset all settings?', [{ label: 'Reset', danger: true, run: () => void desk.resetConfig().then(() => d.toast('Settings reset'), report) }, { label: 'Cancel', run: () => undefined }])}
-            />
-          </Row>
-          <Row label="Leave DeskTV" hint="Ctrl + Alt + Home brings it back from any app. The log is in %APPDATA%\DeskTV\logs.">
-            <Action k="exit:min" label="Show the desktop" run={() => void desk.minimize()} />
-            <Action k="exit:quit" label="Quit" run={() => void desk.quit()} />
-          </Row>
-        </Section>
+  return (
+    <div className="settings" data-scope="settings">
+      <div className="settings-bg" aria-hidden="true">
+        <span className="sb a" />
+        <span className="sb b" />
+        <span className="sb c" />
+      </div>
+      <div className="settings-brand glass">
+        <Glyph name="sparkles" size="calc(150 * var(--k))" />
+        <div className="brand-name">DeskTV</div>
+        <div className="brand-sub">Your PC's TV home screen</div>
+        <div className="brand-ver">DeskTV {d.version}</div>
+      </div>
+      <div className="settings-panel glass">
+        {screen !== 'main' && <h2 className="set-title">{TITLES[screen]}</h2>}
+        <div className="set-list" data-scroller ref={panel} key={screen}>
+          {rows}
+        </div>
+        {screen !== 'main' && <div className="set-foot">OK or the arrows change the value.</div>}
       </div>
     </div>
-  );
-}
-
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="settings-section">
-      <h2 className="row-title">{title}</h2>
-      <div className="settings-panel">{children}</div>
-    </section>
   );
 }

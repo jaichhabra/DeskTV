@@ -1,4 +1,5 @@
-import { moveFocus, type Dir } from '../../shared/nav';
+import { moveFocus, scrollToShow, type Dir } from '../../shared/nav';
+import { bump, tick } from './sounds';
 
 /**
  * Remote-style focus over the DOM. The topmost [data-scope] (a page, or an overlay above it) holds rows
@@ -33,8 +34,18 @@ export function focusItem(el: HTMLElement, smooth = true): void {
   const row = el.closest<HTMLElement>('[data-row]');
   const scroller = el.closest<HTMLElement>('[data-scroller]');
   const behavior: ScrollBehavior = smooth && document.documentElement.dataset.motion === 'full' ? 'smooth' : 'auto';
+  // Only the item's own scroller moves (never the page around it), and only as far as it must, with room for the
+  // focused item to grow.
   if (row?.hasAttribute('data-row-top') && scroller) scroller.scrollTo({ top: 0, behavior });
-  else el.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior });
+  else if (scroller) {
+    const s = scroller.getBoundingClientRect();
+    const b = el.getBoundingClientRect();
+    const mx = b.width * 0.25;
+    const my = b.height * 0.5;
+    const left = scrollToShow(scroller.scrollLeft, s.width, b.left - s.left + scroller.scrollLeft, b.width, mx);
+    const top = scrollToShow(scroller.scrollTop, s.height, b.top - s.top + scroller.scrollTop, b.height, my);
+    if (left !== scroller.scrollLeft || top !== scroller.scrollTop) scroller.scrollTo({ left, top, behavior });
+  }
   const scope = el.closest<HTMLElement>('[data-scope]');
   if (scope?.dataset.scope && el.dataset.key) memory.set(scope.dataset.scope, el.dataset.key);
 }
@@ -77,7 +88,11 @@ export function move(dir: Dir): boolean {
     })
   }));
   const next = moveFocus(centers, at, dir);
-  if (!next) return false;
+  if (!next) {
+    bump();
+    return false;
+  }
+  tick();
   focusItem(rows[next.row][next.col]);
   return true;
 }

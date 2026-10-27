@@ -26,6 +26,10 @@ export interface DeskApi {
   pickExecutable(): Promise<string | null>;
   pickImage(): Promise<string | null>;
   pickFolder(): Promise<string | null>;
+  /** Opens a documented app link, such as ms-settings: for Windows' Settings. */
+  openUri(uri: string): Promise<boolean>;
+  /** The Wi-Fi's name, "Ethernet", or null when offline. */
+  networkName(): Promise<string | null>;
 
   library(): Promise<LibraryState>;
   rescanLibrary(): Promise<void>;
@@ -70,6 +74,8 @@ export const CHANNELS = [
   'pick:exe',
   'pick:image',
   'pick:folder',
+  'open:uri',
+  'network:name',
   'library:get',
   'library:rescan',
   'library:add',

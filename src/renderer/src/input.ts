@@ -1,5 +1,6 @@
 import type { Dir } from '../../shared/nav';
 import { isTyping, move } from './focus';
+import { select } from './sounds';
 
 /**
  * Keyboard, remote and controller in one place. Remotes that act as a keyboard (most HTPC remotes and air mice)
@@ -46,7 +47,10 @@ export function attachInput(h: InputHandlers): () => void {
     holdTimer = null;
     const el = pressed;
     pressed = null;
-    if (el && !held && document.activeElement === el) el.click();
+    if (el && !held && document.activeElement === el) {
+      select();
+      el.click();
+    }
   };
 
   const arrow = (dir: Dir): void => {

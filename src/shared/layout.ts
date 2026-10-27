@@ -19,25 +19,21 @@ export interface LayoutOptions {
 }
 
 export interface Layout {
-  /** The root font size in CSS pixels; everything else is in rem. */
-  rem: number;
-  /** Clear margin on each side, in CSS pixels. */
+  /** Screen pixels per design pixel: the interface is designed on SundarTV's 1920 × 1080 stage. */
+  k: number;
+  /** Clear margin on each side, in CSS pixels (SundarTV's 80 plus the edge margin). */
   insetX: number;
   insetY: number;
-  /** The width the content may use, centered on very wide screens. */
-  contentWidth: number;
-  tileWidth: number;
-  tileHeight: number;
-  tileGap: number;
-  /** Tiles that fit across. */
+  width: number;
+  height: number;
+  /** Tiles across in the All Apps and Library grids. */
   columns: number;
   shape: 'standard' | 'wide' | 'ultrawide' | 'tall';
-  heroHeight: number;
 }
 
 export const FALLBACK_VIEWPORT: Viewport = { width: 1920, height: 1080, dpr: 1 };
 
-const TILE_REM: Record<TileSize, number> = { small: 13, medium: 16, large: 20 };
+const GRID_TILE: Record<TileSize, number> = { small: 260, medium: 300, large: 360 };
 
 export function sanitizeViewport(v: Partial<Viewport> | null | undefined): Viewport {
   const ok = (n: unknown, min: number, max: number): n is number =>
@@ -46,36 +42,25 @@ export function sanitizeViewport(v: Partial<Viewport> | null | undefined): Viewp
   return { width: v.width, height: v.height, dpr: ok(v.dpr, 0.5, 8) ? v.dpr : 1 };
 }
 
+/**
+ * Like a TV, the whole interface follows the screen's height: 1080 lines of design on any screen, so a 4K TV shows
+ * the same picture sharper and a 720p projector the same picture smaller. Narrow screens (4:3 and taller) follow the
+ * width instead, so nothing runs off the side. Sizes are CSS pixels, so Windows' scaling is already in them.
+ */
 export function computeLayout(input: Partial<Viewport> | null | undefined, opts: LayoutOptions): Layout {
   const v = sanitizeViewport(input);
   const ratio = v.width / v.height;
   const shape = ratio >= 2.1 ? 'ultrawide' : ratio >= 1.7 ? 'wide' : ratio >= 1.2 ? 'standard' : 'tall';
-
-  // Text follows the screen's height (what sets viewing distance on a TV), but grows slower than the screen so a
-  // 4K TV at 100% scaling gets larger text, not four times larger. Physical pixels don't matter: Windows' scaling
-  // already turned them into CSS pixels.
-  const reference = Math.min(v.height, v.width / (16 / 9));
-  let rem = 16 * Math.pow(reference / 1080, 0.82);
-  rem = clamp(rem, 11, 34);
-  if (opts.scale !== 'auto') rem = clamp(rem * clamp(opts.scale, 0.6, 1.6), 9, 48);
-  rem = Math.round(rem * 4) / 4;
-
+  let k = Math.min(v.height / 1080, v.width / 1440);
+  if (opts.scale !== 'auto') k *= clamp(opts.scale, 0.6, 1.6);
+  k = clamp(Math.round(k * 1000) / 1000, 0.3, 6);
   const safe = clamp(opts.safeArea, 0, 10) / 100;
-  const insetX = Math.round(v.width * safe + rem * 4);
-  const insetY = Math.round(v.height * safe + rem * 2.5);
-
-  // Very wide screens keep a readable line length: the content stops a little past 16:9, centered.
-  const usable = v.width - insetX * 2;
-  const contentWidth = Math.round(Math.min(usable, (v.height - insetY * 2) * 2.1));
-
-  const tileGap = Math.round(rem * 1.5);
-  const target = TILE_REM[opts.tileSize] * rem;
-  const columns = clamp(Math.floor((contentWidth + tileGap) / (target + tileGap)), 3, 10);
-  const tileWidth = Math.floor((contentWidth - tileGap * (columns - 1)) / columns);
-  const tileHeight = Math.round((tileWidth * 9) / 16);
-  const heroHeight = Math.round(v.height * (shape === 'tall' ? 0.5 : 0.62));
-
-  return { rem, insetX, insetY, contentWidth, tileWidth, tileHeight, tileGap, columns, shape, heroHeight };
+  const insetX = Math.round(v.width * safe + 80 * k);
+  const insetY = Math.round(v.height * safe);
+  const tile = GRID_TILE[opts.tileSize] * k;
+  const gap = 40 * k;
+  const columns = clamp(Math.floor((v.width - insetX * 2 + gap) / (tile + gap)), 3, 8);
+  return { k, insetX, insetY, width: v.width, height: v.height, columns, shape };
 }
 
 /**
